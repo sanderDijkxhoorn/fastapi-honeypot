@@ -2,8 +2,15 @@ from fastapi import FastAPI, Request
 from starlette.responses import Response
 from datetime import datetime
 import logging
+import os
+from dotenv import load_dotenv
+import httpx
 
-logging.basicConfig(filename='app.log', level=logging.INFO, format='%(asctime)s %(message)s')
+load_dotenv()
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+LOG_FILE = os.getenv("LOG_FILE", "app.log")
+
+logging.basicConfig(filename=LOG_FILE, level=logging.INFO, format='%(asctime)s %(message)s')
 
 app = FastAPI()
 
@@ -25,7 +32,15 @@ async def log_traffic(request: Request, call_next):
         "process_time": process_time,
         "client_host": client_host
     }
-    logging.info(str(log_params))
+    log_message = str(log_params)
+    logging.info(log_message)
+    # Send to Discord webhook if URL is set
+    if DISCORD_WEBHOOK_URL:
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(DISCORD_WEBHOOK_URL, json={"content": log_message})
+        except Exception as e:
+            logging.error(f"Failed to send log to Discord: {e}")
     return response
 
 @app.api_route("/{rest_of_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])

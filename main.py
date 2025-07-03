@@ -9,6 +9,8 @@ import json
 import asyncio
 from collections import Counter
 import shutil
+from typing import Any, Dict
+import aiofiles
 
 load_dotenv()
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
@@ -23,33 +25,53 @@ logging.basicConfig(filename=LOG_FILE, level=logging.INFO, format='%(asctime)s %
 
 app = FastAPI()
 
-stats = {
-    "total_requests": 0,
-    "countries": Counter(),
-    "ips": Counter(),
-    "user_agents": Counter(),
-    "paths": Counter(),
-    "methods": Counter(),
-    "status_codes": Counter(),
-}
+class StatsManager:
+    def __init__(self, stats_file: str, top_n: int):
+        self.stats_file = stats_file
+        self.top_n = top_n
+        self.stats = {
+            "total_requests": 0,
+            "countries": Counter(),
+            "ips": Counter(),
+            "user_agents": Counter(),
+            "paths": Counter(),
+            "methods": Counter(),
+            "status_codes": Counter(),
+        }
 
-def save_stats():
-    with open(STATS_FILE, "w") as f:
-        json.dump(stats, f)
+    async def save(self) -> None:
+        async with aiofiles.open(self.stats_file, "w") as f:
+            await f.write(json.dumps(self.stats, default=dict))
 
-def load_stats():
-    global stats
-    try:
-        with open(STATS_FILE, "r") as f:
-            loaded = json.load(f)
-            for k in stats:
-                stats[k] = Counter(loaded.get(k, {})) if k != "total_requests" else loaded.get(k, 0)
-    except Exception:
-        pass
+    def load(self) -> None:
+        try:
+            with open(self.stats_file, "r") as f:
+                loaded = json.load(f)
+                for k in self.stats:
+                    self.stats[k] = Counter(loaded.get(k, {})) if k != "total_requests" else loaded.get(k, 0)
+        except Exception:
+            pass
+
+    def reset(self) -> None:
+        self.stats = {
+            "total_requests": 0,
+            "countries": Counter(),
+            "ips": Counter(),
+            "user_agents": Counter(),
+            "paths": Counter(),
+            "methods": Counter(),
+            "status_codes": Counter(),
+        }
+
+    def get_top(self, counter: Counter) -> Any:
+        return counter.most_common(self.top_n)
+
+# Replace global stats with StatsManager instance
+stats_manager = StatsManager(STATS_FILE, STATS_TOP_N)
 
 @app.on_event("startup")
 async def startup_event():
-    load_stats()
+    stats_manager.load()
     asyncio.create_task(report_stats_periodically())
 
 async def report_stats_periodically():
@@ -63,7 +85,7 @@ async def report_stats_periodically():
             next_time = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
         sleep_seconds = (next_time - now).total_seconds()
         await asyncio.sleep(sleep_seconds)
-        save_stats()  # Ensure stats are up to date before archiving
+        await stats_manager.save()  # async save
         # Ensure archive directory exists before copying
         if not os.path.exists(STATS_ARCHIVE_DIR):
             os.makedirs(STATS_ARCHIVE_DIR)
@@ -74,23 +96,8 @@ async def report_stats_periodically():
         archive_path = os.path.join(STATS_ARCHIVE_DIR, archive_name)
         shutil.copy2(STATS_FILE, archive_path)
         await send_stats_to_discord()
-        reset_stats()
-        save_stats()
-
-def reset_stats():
-    global stats
-    stats = {
-        "total_requests": 0,
-        "countries": Counter(),
-        "ips": Counter(),
-        "user_agents": Counter(),
-        "paths": Counter(),
-        "methods": Counter(),
-        "status_codes": Counter(),
-    }
-
-def get_top(counter):
-    return counter.most_common(STATS_TOP_N)
+        stats_manager.reset()
+        await stats_manager.save()
 
 def escape_discord(text):
     # Always wrap in code formatting for clarity and to prevent Discord unfurling
@@ -102,22 +109,23 @@ async def send_stats_to_discord():
         logging.warning("DISCORD_STATS_WEBHOOK_URL is not set. Stats will not be sent.")
         return
     def format_top(counter):
-        items = get_top(counter)
+        items = stats_manager.get_top(counter)
         if not items:
             return "None"
         return "\n".join([f"{i+1}. {escape_discord(k)} — {escape_discord(v)}" for i, (k, v) in enumerate(items)])
-    total_requests = stats["total_requests"]
-    unique_ips = len(stats["ips"])
-    unique_countries = len(stats["countries"])
+    s = stats_manager.stats
+    total_requests = s["total_requests"]
+    unique_ips = len(s["ips"])
+    unique_countries = len(s["countries"])
     summary = f"**Requests:** `{total_requests}` | **Unique IPs:** `{unique_ips}` | **Unique Countries:** `{unique_countries}`"
     embed_fields = [
         {"name": "Summary", "value": summary, "inline": False},
-        {"name": "Top Countries", "value": format_top(stats["countries"]), "inline": False},
-        {"name": "Top IPs", "value": format_top(stats["ips"]), "inline": False},
-        {"name": "Top User-Agents", "value": format_top(stats["user_agents"]), "inline": False},
-        {"name": "Top Paths", "value": format_top(stats["paths"]), "inline": False},
-        {"name": "Requests per Method", "value": "\n".join([f"{escape_discord(m)}: {escape_discord(n)}" for m, n in stats["methods"].items()]) or "None", "inline": False},
-        {"name": "Requests per Status Code", "value": "\n".join([f"{escape_discord(s)}: {escape_discord(n)}" for s, n in stats["status_codes"].items()]) or "None", "inline": False},
+        {"name": "Top Countries", "value": format_top(s["countries"]), "inline": False},
+        {"name": "Top IPs", "value": format_top(s["ips"]), "inline": False},
+        {"name": "Top User-Agents", "value": format_top(s["user_agents"]), "inline": False},
+        {"name": "Top Paths", "value": format_top(s["paths"]), "inline": False},
+        {"name": "Requests per Method", "value": "\n".join([f"{escape_discord(m)}: {escape_discord(n)}" for m, n in s["methods"].items()]) or "None", "inline": False},
+        {"name": "Requests per Status Code", "value": "\n".join([f"{escape_discord(s_)}: {escape_discord(n)}" for s_, n in s["status_codes"].items()]) or "None", "inline": False},
     ]
     embed = {
         "title": "Honeypot Stats (last hour)",
@@ -129,7 +137,7 @@ async def send_stats_to_discord():
         async with httpx.AsyncClient() as client:
             await client.post(DISCORD_STATS_WEBHOOK_URL, json={"embeds": [embed]})
     except Exception as e:
-        logging.error(f"Failed to send stats to Discord: {e}")
+        logging.exception(f"Failed to send stats to Discord: {e}")
 
 @app.middleware("http")
 async def log_traffic(request: Request, call_next):
@@ -137,12 +145,16 @@ async def log_traffic(request: Request, call_next):
     response = await call_next(request)
     process_time = (datetime.now() - start_time).total_seconds()
     client_host = request.client.host
-    log_params = {
+    try:
+        request_body = await request.body()
+    except Exception:
+        request_body = b"<unreadable>"
+    log_params: Dict[str, Any] = {
         "request_method": request.method,
         "request_url": str(request.url),
         "request_size": request.headers.get("content-length"),
         "request_headers": dict(request.headers),
-        "request_body": await request.body(),
+        "request_body": request_body.decode(errors="replace") if isinstance(request_body, bytes) else str(request_body),
         "response_status": response.status_code,
         "response_size": response.headers.get("content-length"),
         "response_headers": dict(response.headers),
@@ -151,16 +163,12 @@ async def log_traffic(request: Request, call_next):
     }
     log_message = str(log_params)
     logging.info(log_message)
-    # Send to Discord webhook as an embed if URL is set
     if DISCORD_WEBHOOK_URL:
         try:
-            # Build embed fields from log_params
             embed_fields = []
             for key, value in log_params.items():
-                # Pretty-print headers as JSON code blocks
                 if key in ["request_headers", "response_headers"]:
                     display_value = f"```json\n{json.dumps(value, indent=2)}\n```" if value else "`None`"
-                # Show URLs and bodies as code blocks
                 elif key in ["request_url", "request_body"]:
                     display_value = f"`{value}`" if value else "`None`"
                 else:
@@ -179,18 +187,19 @@ async def log_traffic(request: Request, call_next):
             async with httpx.AsyncClient() as client:
                 await client.post(DISCORD_WEBHOOK_URL, json={"embeds": [embed]})
         except Exception as e:
-            logging.error(f"Failed to send log to Discord: {e}")
+            logging.exception(f"Failed to send log to Discord: {e}")
     # Update stats
-    stats["total_requests"] += 1
-    stats["countries"][request.headers.get("cf-ipcountry", "??")] += 1
-    stats["ips"][request.headers.get("cf-connecting-ip", request.client.host)] += 1
-    stats["user_agents"][request.headers.get("user-agent", "")] += 1
-    stats["paths"][request.url.path] += 1
-    stats["methods"][request.method] += 1
-    stats["status_codes"][response.status_code] += 1
-    save_stats()
+    s = stats_manager.stats
+    s["total_requests"] += 1
+    s["countries"][request.headers.get("cf-ipcountry", "??")] += 1
+    s["ips"][request.headers.get("cf-connecting-ip", request.client.host)] += 1
+    s["user_agents"][request.headers.get("user-agent", "")] += 1
+    s["paths"][request.url.path] += 1
+    s["methods"][request.method] += 1
+    s["status_codes"][response.status_code] += 1
+    await stats_manager.save()
     return response
 
-@app.api_route("/{rest_of_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+@app.api_route("/{rest_of_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 async def catch_all(request: Request, rest_of_path: str):
     return Response(status_code=418, content="I'm a teapot")

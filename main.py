@@ -34,12 +34,30 @@ async def log_traffic(request: Request, call_next):
     }
     log_message = str(log_params)
     logging.info(log_message)
-    # Send to Discord webhook if URL is set
+    # Send to Discord webhook as an embed if URL is set
     if DISCORD_WEBHOOK_URL:
         try:
-            content = f"```\n{log_message}\n```"
+            # Build embed fields from log_params
+            embed_fields = []
+            for key, value in log_params.items():
+                # Show URLs and bodies as code blocks, others as inline
+                if key in ["request_url", "request_body"]:
+                    display_value = f"`{value}`" if value else "`None`"
+                else:
+                    display_value = str(value)
+                embed_fields.append({
+                    "name": key,
+                    "value": display_value,
+                    "inline": False
+                })
+            embed = {
+                "title": "Honeypot Log",
+                "color": 0x3498db,
+                "fields": embed_fields,
+                "timestamp": datetime.utcnow().isoformat()
+            }
             async with httpx.AsyncClient() as client:
-                await client.post(DISCORD_WEBHOOK_URL, json={"content": content})
+                await client.post(DISCORD_WEBHOOK_URL, json={"embeds": [embed]})
         except Exception as e:
             logging.error(f"Failed to send log to Discord: {e}")
     return response

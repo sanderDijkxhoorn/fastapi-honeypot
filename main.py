@@ -37,8 +37,9 @@ async def log_traffic(request: Request, call_next):
     # Send to Discord webhook if URL is set
     if DISCORD_WEBHOOK_URL:
         try:
+            content = f"```\n{log_message}\n```"
             async with httpx.AsyncClient() as client:
-                await client.post(DISCORD_WEBHOOK_URL, json={"content": log_message})
+                await client.post(DISCORD_WEBHOOK_URL, json={"content": content})
         except Exception as e:
             logging.error(f"Failed to send log to Discord: {e}")
     return response

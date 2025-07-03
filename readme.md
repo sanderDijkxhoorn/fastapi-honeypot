@@ -10,6 +10,8 @@ The log information is stored in a local file named `app.log`.
 - Logs response status code, size, headers.
 - Logs client's IP address.
 - Logs the processing time of each request.
+- Sends logs to a Discord webhook as a rich embed (if `DISCORD_WEBHOOK_URL` is set), with pretty-printed headers and code-formatted URLs/bodies to prevent Discord from fetching links.
+- Returns HTTP status code 418 ("I'm a teapot") for all requests, as a playful honeypot response.
 
 ## Code Overview
 
@@ -40,3 +42,18 @@ The `--reload` flag enables hot reloading, which means the server will automatic
 Your FastAPI application should now be running at `http://localhost:8000`. Any incoming HTTP requests will be logged and their details stored in `app.log`.
 
 Please note that as this is a basic application for demonstration purposes, it does not include features you would typically find in a production-ready application, such as authentication, error handling, and tests.
+
+## Discord Webhook Integration
+
+If you want to receive logs in a Discord channel, set the `DISCORD_WEBHOOK_URL` environment variable to your Discord webhook URL. The logs will be sent as a Discord embed, with headers formatted as pretty JSON and URLs/bodies shown as code blocks to prevent Discord from fetching them.
+
+Example `.env` file:
+
+```
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your_webhook_url_here
+LOG_FILE=app.log
+```
+
+## Teapot Response
+
+All requests to the server will receive a playful HTTP 418 (I'm a teapot) response, making it clear this is a honeypot.

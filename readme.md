@@ -18,41 +18,25 @@ The log information is stored in a local file named `app.log`.
 - The archive folder can be changed with the `STATS_ARCHIVE_DIR` environment variable.
 - Set `DEBUG_MODE=1` to send and archive stats every minute (for testing); by default, stats are sent and archived every hour.
 
-## Code Overview
+## Setup & Usage
 
-The application is primarily comprised of a middleware function `log_traffic` and a catch-all API route.
-
-The `log_traffic` middleware function is responsible for processing each request and response, extracting relevant details, and logging them.
-
-The catch-all route `{rest_of_path:path}` is a wildcard route that matches any path and HTTP method, allowing the application to handle and log all incoming requests, regardless of the endpoint or method used.
-
-## How to Run
-
-Ensure you have Python 3.6 or later installed.
-
-1. First, you'll need to install FastAPI and Uvicorn (the ASGI server used to run FastAPI applications). If you haven't done so already, install them using pip:
+### 1. Create and Activate a Virtual Environment (Recommended)
 
 ```bash
-pip install fastapi uvicorn
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-2. To start the server, navigate to the directory containing your FastAPI application file (named `main.py` by default), and run the following command:
+### 2. Install Dependencies
 
 ```bash
-uvicorn main:app --reload
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
 ```
 
-The `--reload` flag enables hot reloading, which means the server will automatically update whenever you make changes to your code.
+### 3. Configure Environment Variables
 
-Your FastAPI application should now be running at `http://localhost:8000`. Any incoming HTTP requests will be logged and their details stored in `app.log`.
-
-Please note that as this is a basic application for demonstration purposes, it does not include features you would typically find in a production-ready application, such as authentication, error handling, and tests.
-
-## Discord Webhook Integration
-
-If you want to receive logs in a Discord channel, set the `DISCORD_WEBHOOK_URL` environment variable to your Discord webhook URL. The logs will be sent as a Discord embed, with headers formatted as pretty JSON and URLs/bodies shown as code blocks to prevent Discord from fetching them.
-
-If you want to receive periodic stats (top countries, IPs, user-agents, etc.) in a different Discord channel, set the `DISCORD_STATS_WEBHOOK_URL` environment variable to your stats Discord webhook URL. Stats are sent every hour as a Discord embed (or every minute in debug mode). Archived stats are saved in the `stats_archive` folder by default.
+Create a `.env` file in the project root (see example below) or set the variables in your shell.
 
 Example `.env` file:
 
@@ -68,6 +52,21 @@ DEBUG_MODE=1
 - `STATS_TOP_N`: Number of top items to show in stats (default: 5)
 - `STATS_ARCHIVE_DIR`: Directory to store archived stats (default: `stats_archive`)
 - `DEBUG_MODE`: Set to `1` to send/archive stats every minute for testing (default: hourly)
+
+### 4. Run the Application
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+- The app will be available at [http://localhost:8000](http://localhost:8000)
+- All incoming HTTP requests will be logged to `app.log`.
+
+## Discord Webhook Integration
+
+If you want to receive logs in a Discord channel, set the `DISCORD_WEBHOOK_URL` environment variable to your Discord webhook URL. The logs will be sent as a Discord embed, with headers formatted as pretty JSON and URLs/bodies shown as code blocks to prevent Discord from fetching them.
+
+If you want to receive periodic stats (top countries, IPs, user-agents, etc.) in a different Discord channel, set the `DISCORD_STATS_WEBHOOK_URL` environment variable to your stats Discord webhook URL. Stats are sent every hour as a Discord embed (or every minute in debug mode). Archived stats are saved in the `stats_archive` folder by default.
 
 ## Teapot Response
 

@@ -5,6 +5,7 @@ import logging
 import os
 from dotenv import load_dotenv
 import httpx
+import json
 
 load_dotenv()
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
@@ -40,8 +41,11 @@ async def log_traffic(request: Request, call_next):
             # Build embed fields from log_params
             embed_fields = []
             for key, value in log_params.items():
-                # Show URLs and bodies as code blocks, others as inline
-                if key in ["request_url", "request_body"]:
+                # Pretty-print headers as JSON code blocks
+                if key in ["request_headers", "response_headers"]:
+                    display_value = f"```json\n{json.dumps(value, indent=2)}\n```" if value else "`None`"
+                # Show URLs and bodies as code blocks
+                elif key in ["request_url", "request_body"]:
                     display_value = f"`{value}`" if value else "`None`"
                 else:
                     display_value = str(value)

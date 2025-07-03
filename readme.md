@@ -47,10 +47,13 @@ Please note that as this is a basic application for demonstration purposes, it d
 
 If you want to receive logs in a Discord channel, set the `DISCORD_WEBHOOK_URL` environment variable to your Discord webhook URL. The logs will be sent as a Discord embed, with headers formatted as pretty JSON and URLs/bodies shown as code blocks to prevent Discord from fetching them.
 
+If you want to receive periodic stats (top countries, IPs, user-agents, etc.) in a different Discord channel, set the `DISCORD_STATS_WEBHOOK_URL` environment variable to your stats Discord webhook URL. Stats are sent every hour as a Discord embed.
+
 Example `.env` file:
 
 ```
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your_webhook_url_here
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your_log_webhook_url_here
+DISCORD_STATS_WEBHOOK_URL=https://discord.com/api/webhooks/your_stats_webhook_url_here
 LOG_FILE=app.log
 ```
 

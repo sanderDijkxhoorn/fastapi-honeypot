@@ -74,7 +74,7 @@ def get_top(counter, n=5):
 
 def escape_discord(text):
     # Always wrap in code formatting for clarity and to prevent Discord unfurling
-    return f'`{str(text).replace('`', '\u200b`')}`'
+    return f"`{str(text).replace('`', '\u200b`')}`"
 
 async def send_stats_to_discord():
     if not DISCORD_STATS_WEBHOOK_URL:

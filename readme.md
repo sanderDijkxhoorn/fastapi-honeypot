@@ -12,6 +12,11 @@ The log information is stored in a local file named `app.log`.
 - Logs the processing time of each request.
 - Sends logs to a Discord webhook as a rich embed (if `DISCORD_WEBHOOK_URL` is set), with pretty-printed headers and code-formatted URLs/bodies to prevent Discord from fetching links.
 - Returns HTTP status code 418 ("I'm a teapot") for all requests, as a playful honeypot response.
+- Periodic stats are sent to Discord as a rich embed (if `DISCORD_STATS_WEBHOOK_URL` is set), including top countries, IPs, user-agents, paths, methods, and status codes.
+- Stats are archived after each report in a folder (default: `stats_archive`) with timestamped filenames for historical tracking.
+- The number of top items in stats is configurable via the `STATS_TOP_N` environment variable.
+- The archive folder can be changed with the `STATS_ARCHIVE_DIR` environment variable.
+- Set `DEBUG_MODE=1` to send and archive stats every minute (for testing); by default, stats are sent and archived every hour.
 
 ## Code Overview
 
@@ -47,7 +52,7 @@ Please note that as this is a basic application for demonstration purposes, it d
 
 If you want to receive logs in a Discord channel, set the `DISCORD_WEBHOOK_URL` environment variable to your Discord webhook URL. The logs will be sent as a Discord embed, with headers formatted as pretty JSON and URLs/bodies shown as code blocks to prevent Discord from fetching them.
 
-If you want to receive periodic stats (top countries, IPs, user-agents, etc.) in a different Discord channel, set the `DISCORD_STATS_WEBHOOK_URL` environment variable to your stats Discord webhook URL. Stats are sent every hour as a Discord embed.
+If you want to receive periodic stats (top countries, IPs, user-agents, etc.) in a different Discord channel, set the `DISCORD_STATS_WEBHOOK_URL` environment variable to your stats Discord webhook URL. Stats are sent every hour as a Discord embed (or every minute in debug mode). Archived stats are saved in the `stats_archive` folder by default.
 
 Example `.env` file:
 
@@ -55,7 +60,14 @@ Example `.env` file:
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your_log_webhook_url_here
 DISCORD_STATS_WEBHOOK_URL=https://discord.com/api/webhooks/your_stats_webhook_url_here
 LOG_FILE=app.log
+STATS_TOP_N=5
+STATS_ARCHIVE_DIR=stats_archive
+DEBUG_MODE=1
 ```
+
+- `STATS_TOP_N`: Number of top items to show in stats (default: 5)
+- `STATS_ARCHIVE_DIR`: Directory to store archived stats (default: `stats_archive`)
+- `DEBUG_MODE`: Set to `1` to send/archive stats every minute for testing (default: hourly)
 
 ## Teapot Response
 

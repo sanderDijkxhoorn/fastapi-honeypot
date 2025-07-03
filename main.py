@@ -1,19 +1,23 @@
 from fastapi import FastAPI, Request
 from starlette.responses import Response
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import logging
 import os
 from dotenv import load_dotenv
 import httpx
 import json
 import asyncio
-from collections import Counter, defaultdict
+from collections import Counter
+import shutil
 
 load_dotenv()
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 LOG_FILE = os.getenv("LOG_FILE", "app.log")
 STATS_FILE = "stats.json"
 DISCORD_STATS_WEBHOOK_URL = os.getenv("DISCORD_STATS_WEBHOOK_URL")
+STATS_TOP_N = int(os.getenv("STATS_TOP_N", 5))
+STATS_ARCHIVE_DIR = os.getenv("STATS_ARCHIVE_DIR", "stats_archive")
+DEBUG_MODE = os.getenv("DEBUG_MODE", "0") == "1"
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO, format='%(asctime)s %(message)s')
 
@@ -46,13 +50,29 @@ def load_stats():
 @app.on_event("startup")
 async def startup_event():
     load_stats()
-    # Send stats immediately on startup for dev/testing
-    await send_stats_to_discord()
     asyncio.create_task(report_stats_periodically())
 
 async def report_stats_periodically():
     while True:
-        await asyncio.sleep(3600)  # every hour
+        now = datetime.now(timezone.utc)
+        if DEBUG_MODE:
+            # Next full minute
+            next_time = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
+        else:
+            # Next full hour
+            next_time = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+        sleep_seconds = (next_time - now).total_seconds()
+        await asyncio.sleep(sleep_seconds)
+        save_stats()  # Ensure stats are up to date before archiving
+        # Ensure archive directory exists before copying
+        if not os.path.exists(STATS_ARCHIVE_DIR):
+            os.makedirs(STATS_ARCHIVE_DIR)
+        if DEBUG_MODE:
+            archive_name = now.strftime("%Y-%m-%dT%H-%MZ.json")
+        else:
+            archive_name = now.strftime("%Y-%m-%dT%H00Z.json")
+        archive_path = os.path.join(STATS_ARCHIVE_DIR, archive_name)
+        shutil.copy2(STATS_FILE, archive_path)
         await send_stats_to_discord()
         reset_stats()
         save_stats()
@@ -69,8 +89,8 @@ def reset_stats():
         "status_codes": Counter(),
     }
 
-def get_top(counter, n=5):
-    return counter.most_common(n)
+def get_top(counter):
+    return counter.most_common(STATS_TOP_N)
 
 def escape_discord(text):
     # Always wrap in code formatting for clarity and to prevent Discord unfurling
@@ -81,8 +101,8 @@ async def send_stats_to_discord():
     if not DISCORD_STATS_WEBHOOK_URL:
         logging.warning("DISCORD_STATS_WEBHOOK_URL is not set. Stats will not be sent.")
         return
-    def format_top(counter, label, n=3):
-        items = get_top(counter, n)
+    def format_top(counter):
+        items = get_top(counter)
         if not items:
             return "None"
         return "\n".join([f"{i+1}. {escape_discord(k)} — {escape_discord(v)}" for i, (k, v) in enumerate(items)])
@@ -92,10 +112,10 @@ async def send_stats_to_discord():
     summary = f"**Requests:** `{total_requests}` | **Unique IPs:** `{unique_ips}` | **Unique Countries:** `{unique_countries}`"
     embed_fields = [
         {"name": "Summary", "value": summary, "inline": False},
-        {"name": "Top Countries", "value": format_top(stats["countries"], "countries"), "inline": False},
-        {"name": "Top IPs", "value": format_top(stats["ips"], "IPs"), "inline": False},
-        {"name": "Top User-Agents", "value": format_top(stats["user_agents"], "user-agents"), "inline": False},
-        {"name": "Top Paths", "value": format_top(stats["paths"], "paths"), "inline": False},
+        {"name": "Top Countries", "value": format_top(stats["countries"]), "inline": False},
+        {"name": "Top IPs", "value": format_top(stats["ips"]), "inline": False},
+        {"name": "Top User-Agents", "value": format_top(stats["user_agents"]), "inline": False},
+        {"name": "Top Paths", "value": format_top(stats["paths"]), "inline": False},
         {"name": "Requests per Method", "value": "\n".join([f"{escape_discord(m)}: {escape_discord(n)}" for m, n in stats["methods"].items()]) or "None", "inline": False},
         {"name": "Requests per Status Code", "value": "\n".join([f"{escape_discord(s)}: {escape_discord(n)}" for s, n in stats["status_codes"].items()]) or "None", "inline": False},
     ]
@@ -103,7 +123,7 @@ async def send_stats_to_discord():
         "title": "Honeypot Stats (last hour)",
         "color": 0xe67e22,
         "fields": embed_fields,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     try:
         async with httpx.AsyncClient() as client:
@@ -154,7 +174,7 @@ async def log_traffic(request: Request, call_next):
                 "title": "Honeypot Log",
                 "color": 0x3498db,
                 "fields": embed_fields,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             async with httpx.AsyncClient() as client:
                 await client.post(DISCORD_WEBHOOK_URL, json={"embeds": [embed]})

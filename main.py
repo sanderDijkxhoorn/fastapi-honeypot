@@ -64,4 +64,4 @@ async def log_traffic(request: Request, call_next):
 
 @app.api_route("/{rest_of_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 async def catch_all(request: Request, rest_of_path: str):
-    return Response(status_code=200)
+    return Response(status_code=418, content="I'm a teapot")
